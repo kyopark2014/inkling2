@@ -9,6 +9,7 @@ npm install
 npx cdk deploy \
   -c model=thinkingmachines/Inkling-2-Mini \
   -c instance_type=ml.p5.4xlarge \
+  -c fallback_instance_types=ml.g5.xlarge \
   --require-approval never
 ```
 

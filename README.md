@@ -30,11 +30,12 @@ AWS SageMaker에 **[thinkingmachines/Inkling-2-Mini](https://huggingface.co/thin
 | 런타임 | `vllm/vllm-openai:inkling-2-mini` BYOC + SageMaker `/ping`·`/invocations` 어댑터 |
 | 모델 로드 | 컨테이너 기동 시 HF Hub에서 다운로드 (`SM_VLLM_MODEL`) |
 | 기본 인스턴스 | `ml.p5.4xlarge` (H100×1, TP1) |
+| 폴백 옵션 | `--fallback-instance-types ml.g5.xlarge` (용량용, NVFP4 비호환 — 기본은 비활성) |
 | 리전 기본값 | `us-west-2` |
 | 호출 | `boto3` `invoke_endpoint` ← `run_inkling2.py` |
 | 케이스 | `testcases.json` (한국어 chat / vision / tool 10개) |
 
-> **하드웨어:** 공식 vLLM/SGLang 레시피는 Hopper·Blackwell·DGX Spark 등을 검증했습니다. **`ml.g5`(A10G)로는 NVFP4 loop 서빙이 불가**합니다.
+> **하드웨어:** Inkling-2-Mini NVFP4는 GPU capability ≥ 90(Hopper/Blackwell)이 필요합니다. 기본은 `ml.p5.4xlarge`이며, `ml.g5.xlarge`는 `--fallback-instance-types` 옵션으로만 유지합니다.
 
 ## 시스템 구성도
 
@@ -98,7 +99,7 @@ inkling2/
 | AWS 자격 증명 | SageMaker / CloudFormation / IAM / S3 / CodeBuild / ECR |
 | Node.js 22+ | `npx cdk` |
 | Python 3.10+ | `boto3` |
-| SageMaker 쿼터 | `ml.p5.4xlarge for endpoint usage` ≥ 1 |
+| SageMaker 쿼터 | `ml.p5.4xlarge` for endpoint usage ≥ 1 (`ml.g5.xlarge` 폴백 옵션) |
 
 ```bash
 pip install -r requirements.txt
@@ -115,10 +116,13 @@ python installer.py
 # 옵션
 python installer.py --region us-west-2
 python installer.py --instance-type ml.p5.4xlarge
+python installer.py --fallback-instance-types ml.g5.xlarge
 python installer.py --tensor-parallel-size 1
 python installer.py --enable-dspark          # DSpark speculative (기본 off)
 python installer.py --skip-smoke
 ```
+
+> **호환성:** NVFP4는 Hopper/Blackwell이 필요합니다. `ml.g5.xlarge` 폴백은 용량용이며 로드가 실패할 수 있어 기본은 비활성입니다.
 
 설치 단계:
 
@@ -195,10 +199,12 @@ python uninstaller.py --yes    # 확인 없이 삭제
   "sagemaker": {
     "endpoint_name": "inkling-2-mini",
     "instance_type": "ml.p5.4xlarge",
+    "fallback_instance_types": "",
     "cdk_context": {
       "tensor_parallel_size": 1,
       "max_model_len": 65536,
-      "enable_dspark": false
+      "enable_dspark": false,
+      "fallback_instance_types": ""
     }
   }
 }
@@ -236,7 +242,7 @@ print(json.loads(resp["Body"].read()))
 
 ## 비용
 
-`ml.p5.4xlarge`(H100×1) Real-time Hosting도 **시간당 과금**이 큽니다(리전·시점별 Price List 확인). 24/7 방치 시 월 비용이 커지므로 실험 후 즉시 삭제하세요.
+`ml.p5.4xlarge` Real-time Hosting도 **시간당 과금**됩니다(리전·시점별 Price List 확인). 실험 후 즉시 삭제하세요.
 
 | 시나리오 | 권장 |
 | --- | --- |
@@ -247,7 +253,7 @@ print(json.loads(resp["Body"].read()))
 
 ## 운영 팁
 
-- **쿼터:** Service Quotas에서 `ml.p5.4xlarge for endpoint usage` 확인.  
+- **쿼터:** Service Quotas에서 `ml.p5.4xlarge for endpoint usage` 확인. (`ml.g5.xlarge`는 폴백 옵션)  
 - **AMI:** CUDA 13 이미지용 `al2023-ami-sagemaker-inference-gpu-4-1`.  
 - **기동 시간:** health check timeout 1800s — 모델 로드가 깁니다.  
 - **반복 루프:** Inkling은 reasoning 루프에 빠질 수 있어 `max_tokens`를 제한하세요.  

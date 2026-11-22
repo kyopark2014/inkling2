@@ -12,12 +12,14 @@
     "endpoint_name": "inkling-2-mini",
     "instance_type": "ml.p5.4xlarge",
     "instance_count": 1,
+    "fallback_instance_types": "",
     "deploy_source": "deploy/sagemaker",
     "cdk_context": {
       "model": "thinkingmachines/Inkling-2-Mini",
       "model_revision": "main",
       "instance_type": "ml.p5.4xlarge",
       "instance_count": 1,
+      "fallback_instance_types": "",
       "tensor_parallel_size": 1,
       "enable_dspark": false,
       "max_model_len": 65536
@@ -27,6 +29,6 @@
     "destroy": "python uninstaller.py",
     "invoke_permission": "sagemaker:InvokeEndpoint",
     "sort_json_keys": true,
-    "hardware": "Hopper/Blackwell required (NVFP4). ml.g5 is not supported."
+    "hardware": "Inkling-2-Mini NVFP4 needs GPU capability >= 90 (Hopper/Blackwell). Default ml.p5.4xlarge. Optional --fallback-instance-types ml.g5.xlarge is capacity-only."
   }
 }

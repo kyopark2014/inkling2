@@ -7,11 +7,13 @@ deploy/sagemaker CDK로 Inkling-2-Mini (vLLM)를 배포하고,
 기본값:
   model.hub_id      = thinkingmachines/Inkling-2-Mini
   instance_type     = ml.p5.4xlarge
+  fallback          = (optional) ml.g5.xlarge — capacity only; NVFP4 may fail
   region            = AWS 세션 기본 리전 (없으면 us-west-2)
 
 실행:
   python installer.py
   python installer.py --instance-type ml.p5.4xlarge
+  python installer.py --fallback-instance-types ml.g5.xlarge
   python installer.py --model thinkingmachines/Inkling-2-Mini
 """
 
@@ -37,6 +39,9 @@ CDK_DIR = SCRIPT_DIR / "deploy" / "sagemaker"
 
 DEFAULT_MODEL = "thinkingmachines/Inkling-2-Mini"
 DEFAULT_INSTANCE_TYPE = "ml.p5.4xlarge"
+# Optional capacity fallback (e.g. ml.g5.xlarge). Empty by default so p5 does not
+# silently fall onto GPUs that cannot load Inkling NVFP4 (capability < 90).
+DEFAULT_FALLBACK_INSTANCE_TYPES = ""
 DEFAULT_REGION = "us-west-2"
 DEFAULT_REVISION = "main"
 
@@ -115,6 +120,15 @@ def ensure_defaults(config: dict[str, Any], args: argparse.Namespace) -> dict[st
         or cdk.get("instance_count")
         or 1
     )
+    fallback_instance_types = (
+        args.fallback_instance_types
+        if args.fallback_instance_types is not None
+        else (
+            sm.get("fallback_instance_types")
+            or cdk.get("fallback_instance_types")
+            or DEFAULT_FALLBACK_INSTANCE_TYPES
+        )
+    )
     revision = model.get("revision") or cdk.get("model_revision") or DEFAULT_REVISION
     endpoint_name = endpoint_name_for(hub_id)
     tensor_parallel = int(
@@ -149,12 +163,14 @@ def ensure_defaults(config: dict[str, Any], args: argparse.Namespace) -> dict[st
                 "endpoint_name": endpoint_name,
                 "instance_type": instance_type,
                 "instance_count": instance_count,
+                "fallback_instance_types": fallback_instance_types,
                 "deploy_source": "deploy/sagemaker",
                 "cdk_context": {
                     "model": hub_id,
                     "model_revision": revision,
                     "instance_type": instance_type,
                     "instance_count": instance_count,
+                    "fallback_instance_types": fallback_instance_types,
                     "tensor_parallel_size": tensor_parallel,
                     "max_model_len": max_model_len,
                     "enable_dspark": enable_dspark,
@@ -218,8 +234,13 @@ def cdk_context_args(config: dict[str, Any]) -> list[str]:
         "-c", f"max_model_len={cdk.get('max_model_len', 65536)}",
         "-c", f"enable_dspark={str(cdk.get('enable_dspark', False)).lower()}",
     ]
-    if cdk.get("fallback_instance_types"):
-        args.extend(["-c", f"fallback_instance_types={cdk['fallback_instance_types']}"])
+    # Always pass explicitly so cdk.json defaults cannot reintroduce a fallback.
+    args.extend(
+        [
+            "-c",
+            f"fallback_instance_types={cdk.get('fallback_instance_types') or ''}",
+        ]
+    )
     if cdk.get("serve_args"):
         args.extend(["-c", f"serve_args={cdk['serve_args']}"])
     return args
@@ -339,6 +360,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help=f"SageMaker 인스턴스 (기본: {DEFAULT_INSTANCE_TYPE})",
     )
+    parser.add_argument(
+        "--fallback-instance-types",
+        default=None,
+        help=f"용량 부족 시 폴백 인스턴스 (쉼표 구분, 기본: {DEFAULT_FALLBACK_INSTANCE_TYPES})",
+    )
     parser.add_argument("--instance-count", type=int, default=None, help="인스턴스 수 (기본: 1)")
     parser.add_argument(
         "--tensor-parallel-size",
@@ -385,6 +411,9 @@ def main(argv: list[str] | None = None) -> int:
         log(
             f"instance    : {config['sagemaker']['instance_type']} "
             f"x{config['sagemaker']['instance_count']}"
+        )
+        log(
+            f"fallback    : {config['sagemaker'].get('fallback_instance_types') or '(none)'}"
         )
         log(f"endpoint    : {config['sagemaker']['endpoint_name']}")
         log(
