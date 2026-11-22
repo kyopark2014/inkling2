@@ -1,0 +1,4 @@
+*
+!Dockerfile
+!sagemaker_entrypoint.py
+!serve.sh

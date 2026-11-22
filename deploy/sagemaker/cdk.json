@@ -1,0 +1,16 @@
+{
+  "app": "npx tsx bin/cdk-app.ts",
+  "context": {
+    "model": "thinkingmachines/Inkling-2-Mini",
+    "model_revision": "main",
+    "instance_type": "ml.p5.4xlarge",
+    "instance_count": 1,
+    "fallback_instance_types": "",
+    "inference_ami_version": "",
+    "tensor_parallel_size": 1,
+    "max_model_len": 65536,
+    "enable_dspark": false,
+    "gpu_memory_utilization": 0.9,
+    "serve_args": ""
+  }
+}

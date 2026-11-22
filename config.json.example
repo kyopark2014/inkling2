@@ -1,0 +1,32 @@
+{
+  "project": "inkling2",
+  "account_id": "YOUR_ACCOUNT_ID",
+  "region": "us-west-2",
+  "model": {
+    "hub_id": "thinkingmachines/Inkling-2-Mini",
+    "revision": "main",
+    "served_name": "Inkling-2-Mini"
+  },
+  "sagemaker": {
+    "stack_name": "inkling-2-mini",
+    "endpoint_name": "inkling-2-mini",
+    "instance_type": "ml.p5.4xlarge",
+    "instance_count": 1,
+    "deploy_source": "deploy/sagemaker",
+    "cdk_context": {
+      "model": "thinkingmachines/Inkling-2-Mini",
+      "model_revision": "main",
+      "instance_type": "ml.p5.4xlarge",
+      "instance_count": 1,
+      "tensor_parallel_size": 1,
+      "enable_dspark": false,
+      "max_model_len": 65536
+    }
+  },
+  "notes": {
+    "destroy": "python uninstaller.py",
+    "invoke_permission": "sagemaker:InvokeEndpoint",
+    "sort_json_keys": true,
+    "hardware": "Hopper/Blackwell required (NVFP4). ml.g5 is not supported."
+  }
+}
