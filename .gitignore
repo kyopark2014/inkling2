@@ -21,3 +21,12 @@ deploy/sagemaker/*.d.ts
 !deploy/sagemaker/bin/
 !deploy/sagemaker/lib/
 !deploy/sagemaker/scripts/
+
+deploy/ec2/node_modules/
+deploy/ec2/cdk.out/
+deploy/ec2/cdk.context.json
+deploy/ec2/*.js
+deploy/ec2/*.d.ts
+!deploy/ec2/bin/
+!deploy/ec2/lib/
+!deploy/ec2/scripts/

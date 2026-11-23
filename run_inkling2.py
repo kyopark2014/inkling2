@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""SageMaker endpoint로 Inkling-2-Mini Chat Completions 예제를 실행합니다.
+"""Inkling-2-Mini Chat Completions 예제를 실행합니다.
 
-config.json 에서 region / endpoint 정보를 읽고,
-testcases.json 의 cases 를 사용해 단독 실행합니다.
+config.json 에서 배포 정보를 읽고 testcases.json cases 를 호출합니다.
+- ec2.base_url 이 있으면 OpenAI-compatible HTTP (/v1/chat/completions)
+- 아니면 sagemaker.endpoint_name 으로 InvokeEndpoint
 
 실행:
   python run_inkling2.py
@@ -17,6 +18,8 @@ import argparse
 import json
 import sys
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -96,6 +99,48 @@ def invoke_endpoint(
     return json.loads(raw.decode("utf-8"))
 
 
+def invoke_openai_http(
+    *,
+    base_url: str,
+    payload: dict[str, Any],
+    sort_keys: bool = True,
+    timeout_s: float = 600.0,
+) -> dict[str, Any]:
+    url = f"{base_url.rstrip('/')}/chat/completions"
+    body = json.dumps(payload, ensure_ascii=False, sort_keys=sort_keys).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode("utf-8", errors="replace")
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError as decode_exc:
+            raise RuntimeError(f"HTTP {exc.code}: {raw[:500]}") from decode_exc
+
+
+def resolve_transport(config: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """Return ('ec2'|'sagemaker', meta). Prefer live EC2 when base_url is set."""
+    ec2 = config.get("ec2") if isinstance(config.get("ec2"), dict) else {}
+    sm = config.get("sagemaker") if isinstance(config.get("sagemaker"), dict) else {}
+    status = str(ec2.get("status") or "").lower()
+    if ec2.get("base_url") and status != "deleted":
+        return "ec2", ec2
+    if sm.get("endpoint_name") and str(sm.get("endpoint_status") or "") != "Deleted":
+        return "sagemaker", sm
+    if sm.get("endpoint_name"):
+        return "sagemaker", sm
+    raise ValueError(
+        "배포 정보가 없습니다. python installer_ec2.py 또는 python installer.py 를 먼저 실행하세요."
+    )
+
+
 def run_examples(
     config: dict[str, Any],
     cases: list[dict[str, Any]],
@@ -103,24 +148,35 @@ def run_examples(
     *,
     cases_path: Path | None = None,
 ) -> int:
-    sm = config.get("sagemaker") or {}
     notes = config.get("notes") or {}
     model = config.get("model") or {}
-
     region = config.get("region") or "us-west-2"
-    endpoint_name = sm.get("endpoint_name")
-    if not endpoint_name:
-        print("config.sagemaker.endpoint_name 이 필요합니다. 먼저 python installer.py 를 실행하세요.")
+    sort_keys = bool(notes.get("sort_json_keys", True))
+
+    try:
+        transport, meta = resolve_transport(config)
+    except ValueError as exc:
+        print(str(exc))
         return 1
 
-    sort_keys = bool(notes.get("sort_json_keys", True))
-    runtime = boto3.client("sagemaker-runtime", region_name=region)
-
-    print(
-        f"endpoint={endpoint_name}  region={region}  "
-        f"instance={sm.get('instance_type')}  "
-        f"model={model.get('served_name') or model.get('hub_id')}"
-    )
+    runtime = None
+    endpoint_name = None
+    base_url = None
+    if transport == "ec2":
+        base_url = meta.get("base_url")
+        print(
+            f"transport=ec2  base_url={base_url}  region={region}  "
+            f"instance={meta.get('instance_type')}  "
+            f"model={model.get('served_name') or model.get('hub_id')}"
+        )
+    else:
+        endpoint_name = meta.get("endpoint_name")
+        runtime = boto3.client("sagemaker-runtime", region_name=region)
+        print(
+            f"transport=sagemaker  endpoint={endpoint_name}  region={region}  "
+            f"instance={meta.get('instance_type')}  "
+            f"model={model.get('served_name') or model.get('hub_id')}"
+        )
     if cases_path is not None:
         print(f"cases={cases_path} ({len(cases)}개)")
     print("=" * 72)
@@ -147,13 +203,22 @@ def run_examples(
 
         started = time.perf_counter()
         try:
-            result = invoke_endpoint(
-                runtime=runtime,
-                endpoint_name=endpoint_name,
-                payload=request,
-                sort_keys=sort_keys,
-            )
-        except (ClientError, BotoCoreError, json.JSONDecodeError) as exc:
+            if transport == "ec2":
+                assert base_url is not None
+                result = invoke_openai_http(
+                    base_url=base_url,
+                    payload=request,
+                    sort_keys=sort_keys,
+                )
+            else:
+                assert runtime is not None and endpoint_name is not None
+                result = invoke_endpoint(
+                    runtime=runtime,
+                    endpoint_name=endpoint_name,
+                    payload=request,
+                    sort_keys=sort_keys,
+                )
+        except (ClientError, BotoCoreError, json.JSONDecodeError, RuntimeError, OSError) as exc:
             elapsed_ms = (time.perf_counter() - started) * 1000
             timings_ms.append(elapsed_ms)
             print(f"  ERROR: {exc}")
@@ -210,7 +275,7 @@ def run_examples(
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="config.json + testcases.json → SageMaker endpoint 실행"
+        description="config.json + testcases.json → EC2 HTTP 또는 SageMaker endpoint 실행"
     )
     parser.add_argument(
         "--config",

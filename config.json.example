@@ -7,6 +7,30 @@
     "revision": "main",
     "served_name": "Inkling-2-Mini"
   },
+  "ec2": {
+    "stack_name": "inkling-2-mini-ec2",
+    "instance_type": "p5.4xlarge",
+    "vllm_port": 8000,
+    "vllm_image": "vllm/vllm-openai:inkling-2-mini",
+    "allowed_cidr": "YOUR_IP/32",
+    "volume_size_gb": 250,
+    "deploy_source": "deploy/ec2",
+    "cdk_context": {
+      "model": "thinkingmachines/Inkling-2-Mini",
+      "model_revision": "main",
+      "instance_type": "p5.4xlarge",
+      "vllm_port": 8000,
+      "vllm_image": "vllm/vllm-openai:inkling-2-mini",
+      "allowed_cidr": "YOUR_IP/32",
+      "volume_size_gb": 250,
+      "tensor_parallel_size": 1,
+      "enable_dspark": false,
+      "max_model_len": 65536,
+      "gpu_memory_utilization": 0.9,
+      "serve_args": "",
+      "hf_token": ""
+    }
+  },
   "sagemaker": {
     "stack_name": "inkling-2-mini",
     "endpoint_name": "inkling-2-mini",
@@ -26,9 +50,9 @@
     }
   },
   "notes": {
-    "destroy": "python uninstaller.py",
-    "invoke_permission": "sagemaker:InvokeEndpoint",
+    "destroy": "python uninstaller_ec2.py  # or python uninstaller.py for SageMaker",
+    "invoke": "OpenAI-compatible HTTP (EC2) or sagemaker:InvokeEndpoint",
     "sort_json_keys": true,
-    "hardware": "Inkling-2-Mini NVFP4 needs GPU capability >= 90 (Hopper/Blackwell). Default ml.p5.4xlarge. Optional --fallback-instance-types ml.g5.xlarge is capacity-only."
+    "hardware": "Inkling-2-Mini NVFP4 needs GPU capability >= 90 (Hopper/Blackwell). Prefer EC2 p5.4xlarge via installer_ec2.py when SageMaker capacity fails."
   }
 }
